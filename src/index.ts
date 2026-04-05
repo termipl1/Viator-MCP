@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 
 // ─── VERSION ─────────────────────────────────────────────────────────────────
-const VERSION = "3.3.0";
+const VERSION = "3.4.0";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VIATOR_API_KEY = process.env.VIATOR_API_KEY || "";
@@ -13,7 +13,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Viator API helper — teraz zwraca pełny błąd z body
+// Viator API helper
 async function viatorRequest(endpoint: string, method = "GET", body?: object, language = "en") {
   const url = `${VIATOR_BASE_URL}${endpoint}`;
   const headers: Record<string, string> = {
@@ -28,7 +28,6 @@ async function viatorRequest(endpoint: string, method = "GET", body?: object, la
   const response = await fetch(url, options);
 
   if (!response.ok) {
-    // Pobierz pełne body błędu zamiast tylko status code
     const errorBody = await response.text();
     throw new Error(`Viator API error ${response.status}: ${errorBody}`);
   }
@@ -96,12 +95,17 @@ const TOOLS = [
 async function handleTool(name: string, args: Record<string, unknown>) {
   switch (name) {
     case "search_products": {
+      const count = Math.min(Number(args.count) || 10, 50);
       const body = {
         searchTerm: args.searchTerm,
-        searchType: "PRODUCTS",
+        searchTypes: [
+          {
+            searchType: "PRODUCTS",
+            pagination: { offset: 0, count }
+          }
+        ],
         currency: args.currency || "USD",
-        sortOrder: "DEFAULT",
-        pagination: { offset: 0, count: Math.min(Number(args.count) || 10, 50) }
+        sortOrder: "DEFAULT"
       };
       return await viatorRequest("/search/freetext", "POST", body);
     }
@@ -194,7 +198,6 @@ app.post("/mcp", async (req, res) => {
 
     res.json({ jsonrpc: "2.0", id, result });
   } catch (error) {
-    // Zwróć pełny błąd (z body Viator API) do Claude
     res.json({
       jsonrpc: "2.0",
       id,
