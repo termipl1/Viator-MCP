@@ -20,7 +20,7 @@ async function viatorRequest(endpoint: string, method = "GET", body?: object, la
   };
   const options: RequestInit = { method, headers };
   if (body) options.body = JSON.stringify(body);
-  
+
   const response = await fetch(url, options);
   if (!response.ok) throw new Error(`Viator API error ${response.status}`);
   return response.json();
@@ -86,26 +86,33 @@ const TOOLS = [
 async function handleTool(name: string, args: Record<string, unknown>) {
   switch (name) {
     case "search_products": {
+      // FIX: currencyCode (not currency), offset (not start)
       const body = {
         searchTerm: args.searchTerm,
-        currency: args.currency || "USD",
-        pagination: { start: 1, count: Math.min(Number(args.count) || 10, 50) }
+        currencyCode: args.currency || "USD",
+        pagination: { offset: 0, count: Math.min(Number(args.count) || 10, 50) }
       };
       return await viatorRequest("/search/freetext", "POST", body);
     }
+
     case "get_product":
       return await viatorRequest(`/products/${args.productCode}`, "GET");
+
     case "get_availability":
       return await viatorRequest(`/availability/schedules/${args.productCode}`, "GET");
+
     case "get_destinations":
       return await viatorRequest("/destinations", "GET");
+
     case "get_reviews": {
+      // FIX: count (not limit) in pagination
       const body = {
         productCode: args.productCode,
-        pagination: { offset: 0, limit: Number(args.count) || 10 }
+        pagination: { offset: 0, count: Number(args.count) || 10 }
       };
       return await viatorRequest("/reviews/product", "POST", body);
     }
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -131,7 +138,15 @@ app.get("/mcp", (req, res) => {
   };
   res.write(`data: ${JSON.stringify(serverInfo)}\n\n`);
 
-  req.on("close", () => res.end());
+  // FIX: heartbeat to prevent connection timeout
+  const heartbeat = setInterval(() => {
+    res.write(": ping\n\n");
+  }, 30000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    res.end();
+  });
 });
 
 // MCP POST handler
@@ -140,7 +155,7 @@ app.post("/mcp", async (req, res) => {
 
   try {
     let result;
-    
+
     switch (method) {
       case "initialize":
         result = {
@@ -149,18 +164,18 @@ app.post("/mcp", async (req, res) => {
           capabilities: { tools: {} }
         };
         break;
-      
+
       case "tools/list":
         result = { tools: TOOLS };
         break;
-      
+
       case "tools/call":
         const toolResult = await handleTool(params.name, params.arguments || {});
         result = {
           content: [{ type: "text", text: JSON.stringify(toolResult, null, 2) }]
         };
         break;
-      
+
       default:
         result = {};
     }
