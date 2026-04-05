@@ -86,19 +86,13 @@ const TOOLS = [
 async function handleTool(name: string, args: Record<string, unknown>) {
   switch (name) {
     case "search_products": {
-      // FIX: searchTypes array is required by Viator API v2
-      // FIX: currencyCode (not currency), pagination inside searchTypes
-      const count = Math.min(Number(args.count) || 10, 50);
+      // FIX: searchType (singular, top-level), pagination at top level
       const body = {
         searchTerm: args.searchTerm,
-        searchTypes: [
-          {
-            searchType: "PRODUCTS",
-            pagination: { offset: 0, count }
-          }
-        ],
+        searchType: "PRODUCTS",
         currencyCode: args.currency || "USD",
-        sortOrder: "DEFAULT"
+        sortOrder: "DEFAULT",
+        pagination: { offset: 0, count: Math.min(Number(args.count) || 10, 50) }
       };
       return await viatorRequest("/search/freetext", "POST", body);
     }
@@ -113,7 +107,6 @@ async function handleTool(name: string, args: Record<string, unknown>) {
       return await viatorRequest("/destinations", "GET");
 
     case "get_reviews": {
-      // FIX: count (not limit) in pagination
       const body = {
         productCode: args.productCode,
         pagination: { offset: 0, count: Number(args.count) || 10 }
@@ -128,7 +121,7 @@ async function handleTool(name: string, args: Record<string, unknown>) {
 
 // Health check
 app.get("/health", (_, res) => {
-  res.json({ status: "ok", hasApiKey: !!VIATOR_API_KEY });
+  res.json({ status: "ok", hasApiKey: !!VIATOR_API_KEY, version: "3.0-searchfix" });
 });
 
 // MCP SSE endpoint
@@ -138,7 +131,6 @@ app.get("/mcp", (req, res) => {
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
-  // Send server info
   const serverInfo = {
     jsonrpc: "2.0",
     method: "notifications/initialized",
@@ -146,7 +138,6 @@ app.get("/mcp", (req, res) => {
   };
   res.write(`data: ${JSON.stringify(serverInfo)}\n\n`);
 
-  // FIX: heartbeat to prevent connection timeout
   const heartbeat = setInterval(() => {
     res.write(": ping\n\n");
   }, 30000);
